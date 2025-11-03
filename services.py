@@ -31,6 +31,7 @@ class WorldTimeService:
             return None
 
     @staticmethod
+    @staticmethod
     def _get_holiday_name(fecha: datetime) -> Optional[str]:
         """Obtener el nombre del feriado si aplica"""
         key = fecha.strftime("%m-%d")
