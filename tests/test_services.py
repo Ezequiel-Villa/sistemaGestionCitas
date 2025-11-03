@@ -1,18 +1,20 @@
 import asyncio
 from datetime import datetime, timedelta
 from typing import Optional
-
 import httpx
 
 from services import WorldTimeService
 
+# --- Dummies para evitar IO real con httpx.AsyncClient ------------------
 
 class DummyResponse:
+    """Simula httpx.Response con .json() y .raise_for_status()."""
     def __init__(self, status_code: int = 200, data: Optional[object] = None):
         self.status_code = status_code
         self._data = data or {}
 
     def raise_for_status(self):
+        # Emula el comportamiento de httpx: si hay error, lanza HTTPStatusError
         if self.status_code >= 400:
             request = httpx.Request("GET", "https://test.local")
             response = httpx.Response(self.status_code, request=request)
@@ -21,13 +23,14 @@ class DummyResponse:
     def json(self):
         return self._data
 
-
-class DummyAsyncClient:
+class DummyStreamer:
+    """Provee un contexto async con método get() que devuelve la DummyResponse."""
     def __init__(self, response: DummyResponse | Exception):
         self._response = response
 
     async def __aenter__(self):
         if isinstance(self._response, Exception):
+            # Simula fallo al crear el cliente/conectar
             raise self._response
         return self
 
@@ -37,38 +40,38 @@ class DummyAsyncClient:
     async def get(self, url: str):
         return self._response
 
-
 def test_get_current_time_success(monkeypatch):
-    response_data = {
-        "timezone": "America/Mexico_City",
-        "datetime": "2025-01-01T12:00:00+00:00",
-    }
+    """Cuando la API responde 200 con JSON, el servicio debe regresar ese dict."""
+    response_data = {"timezone": "America/Mexico_City", "datetime": "2025-01-01T12:00:00+00:00"}
 
     def fake_async_client(*args, **kwargs):
-        return DummyAsyncClient(DummyResponse(200, response_data))
+        return DummyStreamer(DummyResponse(200, response_data))
 
     monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
 
     result = asyncio.run(WorldTimeService.get_current_time("America/Mexico_City"))
     assert result == response_data
 
-
 def test_get_current_time_error(monkeypatch):
+    """Si hay un ConnectError al crear/usar el cliente, debe devolverse None."""
     def fake_async_client(*args, **kwargs):
-        return DummyAsyncClient(httpx.ConnectError("boom"))
+        return DummyStreamer(httpx.ConnectError("boom"))
 
     monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
 
     result = asyncio.run(WorldTimeService.get_current_time("America/Mexico_City"))
     assert result is None
 
-
 def test_get_holiday_name():
+    """Comprueba que el mapeo de feriados identifique Navidad (25/12)."""
     fecha = datetime(2025, 12, 25, 9, 0, 0)
     assert WorldTimeService._get_holiday_name(fecha) == "Navidad"
 
-
 def test_validate_appointment_date_api_indisponible(monkeypatch):
+    """
+    Si no se puede consultar la hora actual (get_current_time -> None),
+    se considera válida pero con un mensaje informativo.
+    """
     async def fake_get_current_time(timezone: str):
         return None
 
@@ -80,8 +83,8 @@ def test_validate_appointment_date_api_indisponible(monkeypatch):
     assert result["valida"] is True
     assert "No se pudo validar" in result["mensaje"]
 
-
 def test_validate_appointment_date_pasado(monkeypatch):
+    """Si la fecha propuesta es anterior a 'reference', debe marcarse como pasada."""
     reference = datetime(2025, 1, 5, 12, 0, 0)
     past_date = (reference - timedelta(days=1)).isoformat()
 
@@ -96,22 +99,22 @@ def test_validate_appointment_date_pasado(monkeypatch):
     assert result["valida"] is False
     assert "en el pasado" in result["mensaje"]
 
-
 def test_get_timezones_error(monkeypatch):
+    """Si la API responde 500, el servicio debe devolver None."""
     def fake_async_client(*args, **kwargs):
         response = DummyResponse(500, {})
-        return DummyAsyncClient(response)
+        return DummyStreamer(response)
 
     monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
 
     result = asyncio.run(WorldTimeService.get_timezones())
     assert result is None
 
-
 def test_get_timezones_success(monkeypatch):
+    """Caso feliz: la API devuelve lista de zonas horarias."""
     def fake_async_client(*args, **kwargs):
         response = DummyResponse(200, ["America/Tijuana", "Europe/Madrid"])
-        return DummyAsyncClient(response)
+        return DummyStreamer(response)
 
     monkeypatch.setattr(httpx, "AsyncClient", fake_async_client)
 

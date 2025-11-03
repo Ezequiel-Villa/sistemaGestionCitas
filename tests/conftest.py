@@ -1,34 +1,42 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta 
 from pathlib import Path
 import sys
 
 import pytest
 from fastapi.testclient import TestClient
 
+# --- Ajuste del sys.path para poder hacer 'from crud import ...' y 'from main import app'
+#     sin instalar el paquete. Asume que este archivo está en /tests y sube un nivel.
 ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.append(str(ROOT_DIR))
 
-from crud import citas_repo
-from main import app
-from services import WorldTimeService
+from crud import citas_repo            # Repositorio en memoria de las citas
+from main import app                   # Instancia FastAPI a testear
+from services import WorldTimeService  # Servicio que consulta worldtimeapi (mockearemos)
 
+# Tiempo de referencia fijo para que las pruebas sean deterministas
 REFERENCE_TIME = datetime(2025, 1, 1, 12, 0, 0)
-
 
 @pytest.fixture(autouse=True)
 def reset_repository():
-    """Garantiza un repositorio limpio antes y después de cada prueba."""
+    """
+    Fixture que se ejecuta AUTOMÁTICAMENTE antes y después de cada test.
+    Deja el 'citas_repo' limpio para que los tests no se contaminen entre sí.
+    """
     citas_repo.clear()
     yield
     citas_repo.clear()
 
-
 @pytest.fixture
 def mock_world_time(monkeypatch):
-    """Simula las respuestas de WorldTimeService para evitar llamadas externas."""
+    """
+    Reemplaza (monkeypatch) los métodos asíncronos del WorldTimeService por
+    versiones falsas (no llaman a Internet). Así las pruebas son rápidas y reproducibles.
+    """
 
     async def fake_get_current_time(timezone: str = "America/Tijuana"):
+        # Simula la respuesta de worldtimeapi con un datetime fijo
         return {
             "timezone": timezone,
             "datetime": REFERENCE_TIME.isoformat(),
@@ -38,13 +46,19 @@ def mock_world_time(monkeypatch):
         }
 
     async def fake_validate_appointment_date(fecha_cita: str, timezone: str = "America/Tijuana"):
+        """
+        Implementa la misma lógica de validación que haría el servicio real:
+        - Rechaza feriados definidos en WorldTimeService.HOLIDAYS
+        - Rechaza fechas en el pasado respecto a REFERENCE_TIME
+        - Acepta el resto
+        """
         try:
             appointment_datetime = datetime.fromisoformat(fecha_cita.replace("Z", "+00:00"))
         except ValueError:
             appointment_datetime = datetime.fromisoformat(fecha_cita)
 
         holiday_name = WorldTimeService.HOLIDAYS.get(appointment_datetime.strftime("%m-%d"))
-        if holiday_name:
+        if (holiday_name):
             return {
                 "valida": False,
                 "mensaje": f"No se permiten citas en {holiday_name}.",
@@ -72,29 +86,33 @@ def mock_world_time(monkeypatch):
         }
 
     async def fake_get_timezones():
+        # Simula lista de zonas horarias disponibles
         return ["America/Tijuana", "America/Mexico_City", "Europe/Madrid"]
 
+    # Inyección de dependencias por monkeypatch
     monkeypatch.setattr(WorldTimeService, "get_current_time", fake_get_current_time)
     monkeypatch.setattr(WorldTimeService, "validate_appointment_date", fake_validate_appointment_date)
     monkeypatch.setattr(WorldTimeService, "get_timezones", fake_get_timezones)
 
-
 @pytest.fixture
 def client(mock_world_time):
-    """Cliente HTTP para interactuar con la API durante las pruebas."""
+    """
+    Crea un cliente HTTP de pruebas contra la app FastAPI.
+    Depende de 'mock_world_time' para que todas las llamadas a tiempo/feriados estén mockeadas.
+    """
     return TestClient(app)
 
-
+# Helpers de tiempo para reutilizar en varios tests
 @pytest.fixture
 def reference_time():
     return REFERENCE_TIME
 
-
 @pytest.fixture
 def future_datetime(reference_time):
+    # Fecha futura determinista (10 días después del REFERENCE_TIME)
     return reference_time + timedelta(days=10)
-
 
 @pytest.fixture
 def past_datetime(reference_time):
+    # Fecha en el pasado (5 días antes del REFERENCE_TIME)
     return reference_time - timedelta(days=5)
