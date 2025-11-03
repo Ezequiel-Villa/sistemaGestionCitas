@@ -8,6 +8,15 @@ class WorldTimeService:
     """Servicio para interactuar con WorldTimeAPI"""
 
     BASE_URL = "https://worldtimeapi.org/api"
+    HOLIDAYS = {
+        "01-01": "Año Nuevo",
+        "02-05": "Día de la Constitución",
+        "03-21": "Natalicio de Benito Juárez",
+        "05-01": "Día del Trabajo",
+        "09-16": "Independencia de México",
+        "11-20": "Revolución Mexicana",
+        "12-25": "Navidad",
+    }
 
     @staticmethod
     async def get_current_time(timezone: str = "America/Tijuana") -> Optional[dict]:
@@ -20,6 +29,13 @@ class WorldTimeService:
         except Exception as error:  # pragma: no cover - logging auxiliar
             print(f"Error al obtener tiempo: {error}")
             return None
+
+    @staticmethod
+    @staticmethod
+    def _get_holiday_name(fecha: datetime) -> Optional[str]:
+        """Obtener el nombre del feriado si aplica"""
+        key = fecha.strftime("%m-%d")
+        return WorldTimeService.HOLIDAYS.get(key)
 
     @staticmethod
     async def validate_appointment_date(fecha_cita: str, timezone: str = "America/Tijuana") -> dict:
@@ -36,6 +52,17 @@ class WorldTimeService:
         try:
             current_datetime = datetime.fromisoformat(time_data["datetime"].replace("Z", "+00:00"))
             appointment_datetime = datetime.fromisoformat(fecha_cita.replace("Z", "+00:00"))
+
+            holiday_name = WorldTimeService._get_holiday_name(appointment_datetime)
+            if holiday_name:
+                return {
+                    "valida": False,
+                    "mensaje": f"No se permiten citas en {holiday_name}.",
+                    "timezone": timezone,
+                    "hora_actual": time_data["datetime"],
+                    "fecha_cita": fecha_cita,
+                    "feriado": holiday_name,
+                }
 
             if appointment_datetime < current_datetime:
                 return {

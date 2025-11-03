@@ -19,6 +19,14 @@ const timezoneDatetime = document.getElementById("timezone-datetime");
 const timezoneDescription = document.getElementById("timezone-description");
 const timezoneSelect = document.getElementById("timezone");
 const statusFilter = document.getElementById("status-filter");
+const appointmentForm = document.getElementById("appointment-form");
+const patientInput = document.getElementById("patient-name");
+const doctorInput = document.getElementById("doctor-name");
+const specialtySelect = document.getElementById("specialty");
+const dateInput = document.getElementById("appointment-date");
+const timeInput = document.getElementById("appointment-time");
+const notesInput = document.getElementById("appointment-notes");
+const submitButton = appointmentForm.querySelector("button[type='submit']");
 
 const DAYS_OF_WEEK = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const STATUS_CLASSES = {
@@ -27,8 +35,55 @@ const STATUS_CLASSES = {
     Cancelada: "status-cancelada",
 };
 
+const HOLIDAYS = {
+    "01-01": "Año Nuevo",
+    "02-05": "Día de la Constitución",
+    "03-21": "Natalicio de Benito Juárez",
+    "05-01": "Día del Trabajo",
+    "09-16": "Independencia de México",
+    "11-20": "Revolución Mexicana",
+    "12-25": "Navidad",
+};
+
+function showAlert(message) {
+    window.alert(message);
+}
+
+function confirmAction(message) {
+    return window.confirm(message);
+}
+
+function getHolidayInfo(dateString) {
+    if (!dateString) {
+        return null;
+    }
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+    const key = `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    const holidayName = HOLIDAYS[key];
+    return holidayName ? { key, name: holidayName } : null;
+}
+
+function isFutureDateTime(dateValue, timeValue) {
+    const datetime = new Date(`${dateValue}T${timeValue}`);
+    if (Number.isNaN(datetime.getTime())) {
+        return false;
+    }
+    return datetime.getTime() >= Date.now();
+}
+
 function formatDate(date) {
-    return date.toISOString().split("T")[0];
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(dateKey) {
+    const [year, month, day] = dateKey.split("-").map(Number);
+    return new Date(year, month - 1, day);
 }
 
 function formatDisplayDate(isoString) {
@@ -183,7 +238,7 @@ function renderSelectedAppointments() {
     const appointmentsByDate = groupAppointmentsByDate();
     const appointments = appointmentsByDate[dateKey] || [];
 
-    selectedDateTitle.textContent = `Citas para ${new Date(dateKey).toLocaleDateString("es-MX", {
+    selectedDateTitle.textContent = `Citas para ${parseDateKey(dateKey).toLocaleDateString("es-MX", {
         weekday: "long",
         day: "numeric",
         month: "long",
@@ -235,9 +290,9 @@ function createAppointmentCard(appointment) {
     const cancelButton = node.querySelector(".cancel");
     const deleteButton = node.querySelector(".delete");
 
-    completeButton.addEventListener("click", () => updateAppointmentStatus(appointment.id, "Completada"));
-    cancelButton.addEventListener("click", () => updateAppointmentStatus(appointment.id, "Cancelada"));
-    deleteButton.addEventListener("click", () => deleteAppointment(appointment.id));
+    completeButton.addEventListener("click", () => updateAppointmentStatus(appointment, "Completada"));
+    cancelButton.addEventListener("click", () => updateAppointmentStatus(appointment, "Cancelada"));
+    deleteButton.addEventListener("click", () => deleteAppointment(appointment));
 
     return node;
 }
@@ -265,86 +320,178 @@ function renderAppointmentsList() {
 }
 
 async function fetchAppointments() {
-    const response = await fetch(`${API_BASE}/citas`);
-    if (!response.ok) {
-        throw new Error("No se pudieron cargar las citas");
-    }
-    const data = await response.json();
-    state.appointments = data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+    try {
+        const response = await fetch(`${API_BASE}/citas`);
+        if (!response.ok) {
+            throw new Error("No se pudieron cargar las citas");
+        }
+        const data = await response.json();
+        state.appointments = data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
-    if (!state.selectedDate) {
-        state.selectedDate = formatDate(new Date());
-    }
+        if (!state.selectedDate) {
+            const referenceDate = state.currentDate || new Date();
+            state.selectedDate = formatDate(referenceDate);
+        }
 
-    renderCalendar();
-    renderSelectedAppointments();
-    renderAppointmentsList();
+        renderCalendar();
+        renderSelectedAppointments();
+        renderAppointmentsList();
+    } catch (error) {
+        console.error(error);
+        showAlert("No se pudieron cargar las citas. Intenta nuevamente.");
+    }
 }
 
-async function updateAppointmentStatus(id, status) {
-    await fetch(`${API_BASE}/citas/${id}`, {
-        method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ estado: status }),
-    });
-    await fetchAppointments();
+async function updateAppointmentStatus(appointment, status) {
+    if (!confirmAction(`¿Deseas marcar la cita de ${appointment.paciente} como ${status.toLowerCase()}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/citas/${appointment.id}`, {
+            method: "PUT",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ estado: status, timezone: appointment.timezone || state.timezone }),
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail?.mensaje || "No se pudo actualizar la cita");
+        }
+
+        await fetchAppointments();
+        showAlert(`La cita se marcó como ${status.toLowerCase()}.`);
+    } catch (error) {
+        console.error(error);
+        showAlert(error.message);
+    }
 }
 
-async function deleteAppointment(id) {
-    await fetch(`${API_BASE}/citas/${id}`, {
-        method: "DELETE",
-    });
-    await fetchAppointments();
+async function deleteAppointment(appointment) {
+    if (!confirmAction(`¿Deseas eliminar la cita de ${appointment.paciente}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE}/citas/${appointment.id}`, {
+            method: "DELETE",
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail?.mensaje || "No se pudo eliminar la cita");
+        }
+
+        await fetchAppointments();
+        showAlert("La cita se eliminó correctamente.");
+    } catch (error) {
+        console.error(error);
+        showAlert(error.message);
+    }
 }
 
 async function handleFormSubmit(event) {
     event.preventDefault();
-    const form = event.target;
 
-    const paciente = document.getElementById("patient-name").value.trim();
-    const medico = document.getElementById("doctor-name").value.trim();
-    const especialidad = document.getElementById("specialty").value;
-    const fecha = document.getElementById("appointment-date").value;
-    const hora = document.getElementById("appointment-time").value;
-    const motivo = document.getElementById("appointment-notes").value.trim();
+    const paciente = patientInput.value.trim();
+    const medico = doctorInput.value.trim();
+    const especialidad = specialtySelect.value;
+    const fecha = dateInput.value;
+    const hora = timeInput.value;
+    const motivo = notesInput.value.trim();
 
-    if (!fecha || !hora) {
-        alert("Selecciona una fecha y hora válidas");
+    if (!paciente || paciente.length < 3) {
+        showAlert("Ingresa el nombre del paciente (mínimo 3 caracteres).");
+        patientInput.focus();
+        return;
+    }
+
+    if (!medico || medico.length < 3) {
+        showAlert("Ingresa el nombre del doctor (mínimo 3 caracteres).");
+        doctorInput.focus();
+        return;
+    }
+
+    if (!especialidad) {
+        showAlert("Selecciona una especialidad médica para la cita.");
+        specialtySelect.focus();
+        return;
+    }
+
+    if (!fecha) {
+        showAlert("Selecciona la fecha de la cita.");
+        dateInput.focus();
+        return;
+    }
+
+    if (!hora) {
+        showAlert("Selecciona la hora de la cita.");
+        timeInput.focus();
+        return;
+    }
+
+    if (!isFutureDateTime(fecha, hora)) {
+        showAlert("La fecha y hora deben ser posteriores al momento actual.");
+        return;
+    }
+
+    const holidayInfo = getHolidayInfo(`${fecha}T00:00:00`);
+    if (holidayInfo) {
+        showAlert(`No se pueden registrar citas en ${holidayInfo.name}. Elige otro día.`);
+        dateInput.focus();
+        return;
+    }
+
+    if (!motivo || motivo.length < 5) {
+        showAlert("Describe el motivo de la consulta (mínimo 5 caracteres).");
+        notesInput.focus();
         return;
     }
 
     const payload = {
         paciente,
         medico,
-        especialidad: especialidad || null,
+        especialidad,
         fecha: `${fecha}T${hora}`,
-        motivo: motivo || null,
+        motivo,
+        timezone: state.timezone,
     };
 
-    const response = await fetch(`${API_BASE}/citas`, {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-    });
+    try {
+        submitButton.disabled = true;
+        submitButton.textContent = "Agendando...";
 
-    if (!response.ok) {
-        const error = await response.json();
-        alert(error.detail?.mensaje || "No se pudo agendar la cita");
-        return;
+        const response = await fetch(`${API_BASE}/citas`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail?.mensaje || "No se pudo agendar la cita");
+        }
+
+        appointmentForm.reset();
+        state.selectedDate = payload.fecha.split("T")[0];
+        await fetchAppointments();
+        renderCalendar();
+        renderSelectedAppointments();
+        showAlert("La cita se registró correctamente.");
+    } catch (error) {
+        console.error(error);
+        showAlert(error.message);
+    } finally {
+        submitButton.disabled = false;
+        submitButton.textContent = "Agendar Cita";
     }
-
-    form.reset();
-    await fetchAppointments();
-    state.selectedDate = payload.fecha.split("T")[0];
-    renderCalendar();
-    renderSelectedAppointments();
 }
 
-async function refreshCurrentTime() {
+async function refreshCurrentTime(updateCalendar = false) {
     try {
         const response = await fetch(`${API_BASE}/time/current?timezone=${state.timezone}`);
         if (!response.ok) {
@@ -354,6 +501,18 @@ async function refreshCurrentTime() {
         timezoneDatetime.textContent = `${data.date} · ${data.time}`;
         timezoneDescription.textContent = `Zona horaria: ${data.timezone}`;
         currentDateBanner.textContent = formatDisplayDate(data.datetime);
+
+        const remoteDate = new Date(data.datetime);
+        if (!Number.isNaN(remoteDate.getTime())) {
+            state.currentDate = remoteDate;
+            if (updateCalendar) {
+                state.selectedDate = formatDate(remoteDate);
+                renderCalendar();
+                renderSelectedAppointments();
+            } else if (!state.selectedDate) {
+                state.selectedDate = formatDate(remoteDate);
+            }
+        }
     } catch (error) {
         timezoneDatetime.textContent = "No disponible";
         timezoneDescription.textContent = "No se pudo obtener la hora actual";
@@ -387,10 +546,11 @@ function setupNavigation() {
 }
 
 function setupEventListeners() {
-    document.getElementById("appointment-form").addEventListener("submit", handleFormSubmit);
+    appointmentForm.addEventListener("submit", handleFormSubmit);
     timezoneSelect.addEventListener("change", async (event) => {
         state.timezone = event.target.value;
-        await refreshCurrentTime();
+        await refreshCurrentTime(true);
+        showAlert(`Zona horaria actualizada a ${event.target.options[event.target.selectedIndex].textContent}.`);
     });
     statusFilter.addEventListener("change", renderAppointmentsList);
 }
@@ -398,8 +558,11 @@ function setupEventListeners() {
 async function init() {
     setupNavigation();
     setupEventListeners();
-    await Promise.all([fetchAppointments(), refreshCurrentTime()]);
-    setInterval(refreshCurrentTime, 60_000);
+    await refreshCurrentTime(true);
+    await fetchAppointments();
+    setInterval(() => {
+        refreshCurrentTime();
+    }, 60_000);
 }
 
 init().catch((error) => {

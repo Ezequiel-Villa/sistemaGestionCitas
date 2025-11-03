@@ -17,6 +17,8 @@ app = FastAPI(
     title="Sistema de Citas Médicas",
     description="API REST y experiencia web para gestionar citas médicas",
     version="2.0.0",
+    docs_url=None,
+    redoc_url=None,
 )
 
 app.add_middleware(
@@ -59,7 +61,8 @@ def health_check():
 async def crear_cita(cita: CitaCreate):
     """Crear una nueva cita médica validando la fecha con WorldTimeAPI"""
 
-    validacion = await WorldTimeService.validate_appointment_date(cita.fecha.isoformat())
+    timezone = cita.timezone or "America/Mexico_City"
+    validacion = await WorldTimeService.validate_appointment_date(cita.fecha.isoformat(), timezone)
 
     if not validacion["valida"]:
         raise HTTPException(
@@ -97,8 +100,17 @@ def obtener_cita(cita_id: int):
 async def actualizar_cita(cita_id: int, cita_update: CitaUpdate):
     """Actualizar una cita existente"""
 
+    cita_actual = citas_repo.get_by_id(cita_id)
+    if not cita_actual:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Cita con id {cita_id} no encontrada",
+        )
+
+    timezone = cita_update.timezone or cita_actual.timezone
+
     if cita_update.fecha:
-        validacion = await WorldTimeService.validate_appointment_date(cita_update.fecha.isoformat())
+        validacion = await WorldTimeService.validate_appointment_date(cita_update.fecha.isoformat(), timezone)
 
         if not validacion["valida"]:
             raise HTTPException(
@@ -111,11 +123,6 @@ async def actualizar_cita(cita_id: int, cita_update: CitaUpdate):
             )
 
     cita_actualizada = citas_repo.update(cita_id, cita_update)
-    if not cita_actualizada:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Cita con id {cita_id} no encontrada",
-        )
     return cita_actualizada
 
 

@@ -81,7 +81,7 @@
                     <input type="text" id="doctor-name" placeholder="Ej. Dr. Juan Pérez" required />
 
                     <label for="specialty">Especialidad</label>
-                    <select id="specialty">
+                    <select id="specialty" required>
                         <option value="">Seleccionar especialidad</option>
                         <option value="Cardiología">Cardiología</option>
                         <option value="Dermatología">Dermatología</option>
@@ -97,7 +97,13 @@
                     <input type="time" id="appointment-time" required />
 
                     <label for="appointment-notes">Motivo de la Consulta</label>
-                    <textarea id="appointment-notes" rows="3" placeholder="Describe el motivo de la consulta..."></textarea>
+                    <textarea
+                        id="appointment-notes"
+                        rows="3"
+                        placeholder="Describe el motivo de la consulta..."
+                        required
+                        minlength="5"
+                    ></textarea>
 
                     <button type="submit" class="primary">Agendar Cita</button>
                 </form>

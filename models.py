@@ -15,6 +15,11 @@ class CitaBase(BaseModel):
     estado: Literal["Pendiente", "Completada", "Cancelada"] = Field(
         default="Pendiente", description="Estado actual de la cita"
     )
+    timezone: str = Field(
+        default="America/Mexico_City",
+        min_length=3,
+        description="Zona horaria utilizada para validar la cita",
+    )
 
     model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
@@ -34,6 +39,7 @@ class CitaUpdate(BaseModel):
     fecha: Optional[datetime] = None
     motivo: Optional[str] = None
     estado: Optional[Literal["Pendiente", "Completada", "Cancelada"]] = None
+    timezone: Optional[str] = Field(default=None, min_length=3)
 
 
 class CitaResponse(CitaBase):

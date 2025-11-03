@@ -37,6 +37,17 @@ def mock_world_time(monkeypatch):
         except ValueError:
             appointment_datetime = datetime.fromisoformat(fecha_cita)
 
+        holiday_name = WorldTimeService.HOLIDAYS.get(appointment_datetime.strftime("%m-%d"))
+        if holiday_name:
+            return {
+                "valida": False,
+                "mensaje": f"No se permiten citas en {holiday_name}.",
+                "timezone": timezone,
+                "hora_actual": REFERENCE_TIME.isoformat(),
+                "fecha_cita": fecha_cita,
+                "feriado": holiday_name,
+            }
+
         if appointment_datetime < REFERENCE_TIME:
             return {
                 "valida": False,
@@ -99,6 +110,21 @@ def test_crear_cita(client):
     assert data["estado"] == "Pendiente"
     assert data["fecha"] == "2025-11-15T10:30:00"
     assert data["id"] == 1
+    assert data["timezone"] == "America/Mexico_City"
+
+
+def test_rechazar_cita_en_feriado(client):
+    cita_feriado = {
+        "paciente": "Laura Fiestas",
+        "medico": "Dr. Noel",
+        "fecha": "2025-12-25T09:00:00",
+    }
+
+    response = client.post("/citas", json=cita_feriado)
+    assert response.status_code == 400
+    detalle = response.json()["detail"]
+    assert "feriado" in detalle["detalles"]
+    assert "Navidad" in detalle["mensaje"]
 
 
 def test_crear_y_obtener_cita(client):
@@ -120,13 +146,14 @@ def test_crear_y_obtener_cita(client):
     assert data["id"] == cita_id
     assert data["paciente"] == "Ana García"
     assert data["medico"] == "Dr. Carlos Ruiz"
+    assert data["timezone"] == "America/Mexico_City"
 
 
 def test_obtener_todas_las_citas(client):
     cita1 = {
         "paciente": "Pedro Sánchez",
         "medico": "Dr. Luis Hernández",
-        "fecha": "2025-11-20T09:00:00",
+        "fecha": "2025-11-19T09:00:00",
     }
     cita2 = {
         "paciente": "Laura Martínez",
@@ -145,6 +172,7 @@ def test_obtener_todas_las_citas(client):
     assert len(data) == 2
     assert data[0]["paciente"] == "Pedro Sánchez"
     assert data[1]["paciente"] == "Laura Martínez"
+    assert all(item["timezone"] == "America/Mexico_City" for item in data)
 
 
 def test_actualizar_cita(client):
@@ -167,6 +195,7 @@ def test_actualizar_cita(client):
     data = response_update.json()
     assert data["motivo"] == "Consulta de seguimiento"
     assert data["estado"] == "Completada"
+    assert data["timezone"] == "America/Mexico_City"
 
 
 def test_eliminar_cita(client):
@@ -209,7 +238,9 @@ def test_crear_cita_sin_motivo(client):
     data = response.json()
     assert data["motivo"] is None
     assert data["estado"] == "Pendiente"
+    assert data["timezone"] == "America/Mexico_City"
 
+# ===== WORLD TIME API TESTS =====
 
 # ===== WORLD TIME API TESTS =====
 
@@ -281,4 +312,5 @@ def test_actualizar_cita_con_fecha_futura(client):
     assert response_update.status_code == 200
     data = response_update.json()
     assert data["fecha"] == nueva_fecha
+    assert data["timezone"] == "America/Mexico_City"
 
