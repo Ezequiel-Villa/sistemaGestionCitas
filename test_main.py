@@ -240,6 +240,7 @@ def test_crear_cita_sin_motivo(client):
     assert data["estado"] == "Pendiente"
     assert data["timezone"] == "America/Mexico_City"
 
+# ===== WORLD TIME API TESTS =====
 
 # ===== WORLD TIME API TESTS =====
 
