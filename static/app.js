@@ -27,6 +27,7 @@ const dateInput = document.getElementById("appointment-date");
 const timeInput = document.getElementById("appointment-time");
 const notesInput = document.getElementById("appointment-notes");
 const submitButton = appointmentForm.querySelector("button[type='submit']");
+const alertContainer = document.getElementById("alert-container");
 
 const DAYS_OF_WEEK = ["Dom", "Lun", "Mar", "Mié", "Jue", "Vie", "Sáb"];
 const STATUS_CLASSES = {
@@ -34,6 +35,21 @@ const STATUS_CLASSES = {
     Completada: "status-completada",
     Cancelada: "status-cancelada",
 };
+
+const MONTH_SHORT_NAMES = [
+    "ene",
+    "feb",
+    "mar",
+    "abr",
+    "may",
+    "jun",
+    "jul",
+    "ago",
+    "sep",
+    "oct",
+    "nov",
+    "dic",
+];
 
 const HOLIDAYS = {
     "01-01": "Año Nuevo",
@@ -45,12 +61,125 @@ const HOLIDAYS = {
     "12-25": "Navidad",
 };
 
-function showAlert(message) {
-    window.alert(message);
+function removeAlert(alertElement) {
+    if (!alertElement) {
+        return;
+    }
+    const timeoutId = alertElement.dataset.timeoutId;
+    if (timeoutId) {
+        window.clearTimeout(Number(timeoutId));
+    }
+    alertElement.classList.remove("show");
+    alertElement.classList.add("hide");
+    alertElement.addEventListener(
+        "transitionend",
+        () => {
+            alertElement.remove();
+        },
+        { once: true },
+    );
+}
+
+function showAlert(message, type = "info") {
+    if (!alertContainer) {
+        window.alert(message);
+        return;
+    }
+
+    const alertElement = document.createElement("div");
+    alertElement.className = `alert alert-${type}`;
+
+    const messageElement = document.createElement("span");
+    messageElement.className = "alert-message";
+    messageElement.textContent = message;
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "alert-close";
+    closeButton.setAttribute("aria-label", "Cerrar alerta");
+    closeButton.innerHTML = "&times;";
+    closeButton.addEventListener("click", () => removeAlert(alertElement));
+
+    alertElement.appendChild(messageElement);
+    alertElement.appendChild(closeButton);
+    alertContainer.appendChild(alertElement);
+
+    requestAnimationFrame(() => {
+        alertElement.classList.add("show");
+    });
+
+    const timeoutId = window.setTimeout(() => removeAlert(alertElement), 6000);
+    alertElement.dataset.timeoutId = String(timeoutId);
 }
 
 function confirmAction(message) {
     return window.confirm(message);
+}
+
+function parseISODateParts(isoString) {
+    if (!isoString || typeof isoString !== "string") {
+        return null;
+    }
+
+    const [datePart, timePartRaw = ""] = isoString.split("T");
+    if (!datePart) {
+        return null;
+    }
+
+    const [year, month, day] = datePart.split("-").map(Number);
+    const cleanTime = timePartRaw.replace("Z", "").split(/[+-]/)[0];
+    const [hour = "0", minute = "0"] = cleanTime.split(":");
+
+    const parsed = {
+        year,
+        month,
+        day,
+        hour: Number(hour),
+        minute: Number(minute),
+    };
+
+    if (Object.values(parsed).some((value) => Number.isNaN(value))) {
+        return null;
+    }
+
+    return parsed;
+}
+
+function getAppointmentDateKey(isoString) {
+    const parts = parseISODateParts(isoString);
+    if (!parts) {
+        return null;
+    }
+    const year = String(parts.year).padStart(4, "0");
+    const month = String(parts.month).padStart(2, "0");
+    const day = String(parts.day).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function formatAppointmentTime(isoString) {
+    const parts = parseISODateParts(isoString);
+    if (!parts) {
+        return "--";
+    }
+
+    const { hour, minute } = parts;
+    const suffix = hour >= 12 ? "p.m." : "a.m.";
+    const hour12 = ((hour + 11) % 12) + 1;
+    return `${hour12}:${String(minute).padStart(2, "0")} ${suffix}`;
+}
+
+function formatAppointmentDateTime(isoString) {
+    const parts = parseISODateParts(isoString);
+    if (!parts) {
+        return "Fecha no disponible";
+    }
+
+    const monthName = MONTH_SHORT_NAMES[parts.month - 1] || "";
+    return `${parts.day} ${monthName} ${parts.year}, ${formatAppointmentTime(isoString)}`;
+}
+
+function compareAppointmentsByDate(a, b) {
+    return a.fecha.localeCompare(b.fecha);
 }
 
 function getHolidayInfo(dateString) {
@@ -86,24 +215,23 @@ function parseDateKey(dateKey) {
     return new Date(year, month - 1, day);
 }
 
-function formatDisplayDate(isoString) {
+function formatDisplayDate(isoString, timezone) {
+    if (!isoString) {
+        return "--";
+    }
     const date = new Date(isoString);
     return new Intl.DateTimeFormat("es-MX", {
         dateStyle: "full",
-    }).format(date);
-}
-
-function formatDateTime(isoString) {
-    const date = new Date(isoString);
-    return new Intl.DateTimeFormat("es-MX", {
-        dateStyle: "medium",
-        timeStyle: "short",
+        timeZone: timezone,
     }).format(date);
 }
 
 function groupAppointmentsByDate() {
     return state.appointments.reduce((acc, appointment) => {
-        const dateKey = appointment.fecha.split("T")[0];
+        const dateKey = getAppointmentDateKey(appointment.fecha);
+        if (!dateKey) {
+            return acc;
+        }
         if (!acc[dateKey]) {
             acc[dateKey] = [];
         }
@@ -199,21 +327,17 @@ function createDayCell({ dayNumber, dateKey, inactive, appointments }) {
     if (appointments.length) {
         const badge = document.createElement("span");
         badge.className = "appointments-count";
-        badge.textContent = `${appointments.length} citas`;
+        badge.textContent = `${appointments.length}`;
+        badge.setAttribute(
+            "aria-label",
+            appointments.length === 1
+                ? "1 cita programada"
+                : `${appointments.length} citas programadas`,
+        );
         dayNumberWrapper.appendChild(badge);
     }
 
     cell.appendChild(dayNumberWrapper);
-
-    appointments.slice(0, 2).forEach((appointment) => {
-        const pill = document.createElement("span");
-        pill.className = "appointment-pill";
-        pill.textContent = `${new Date(appointment.fecha).toLocaleTimeString("es-MX", {
-            hour: "2-digit",
-            minute: "2-digit",
-        })} · ${appointment.paciente}`;
-        cell.appendChild(pill);
-    });
 
     if (!inactive && dateKey) {
         cell.addEventListener("click", () => {
@@ -236,7 +360,7 @@ function renderSelectedAppointments() {
     }
 
     const appointmentsByDate = groupAppointmentsByDate();
-    const appointments = appointmentsByDate[dateKey] || [];
+    const appointments = (appointmentsByDate[dateKey] || []).slice().sort(compareAppointmentsByDate);
 
     selectedDateTitle.textContent = `Citas para ${parseDateKey(dateKey).toLocaleDateString("es-MX", {
         weekday: "long",
@@ -254,12 +378,9 @@ function renderSelectedAppointments() {
     selectedDateDetail.textContent = `${appointments.length} cita(s) programadas`;
     selectedDateAppointments.innerHTML = "";
 
-    appointments
-        .slice()
-        .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
-        .forEach((appointment) => {
-            selectedDateAppointments.appendChild(createAppointmentCard(appointment));
-        });
+    appointments.forEach((appointment) => {
+        selectedDateAppointments.appendChild(createAppointmentCard(appointment));
+    });
 }
 
 function createAppointmentCard(appointment) {
@@ -275,7 +396,7 @@ function createAppointmentCard(appointment) {
         .filter(Boolean)
         .join(" · ");
     node.querySelector(".doctor").textContent = doctorLine || "Sin información de doctor";
-    node.querySelector(".date").textContent = formatDateTime(appointment.fecha);
+    node.querySelector(".date").textContent = formatAppointmentDateTime(appointment.fecha);
     node.querySelector(".notes").textContent = appointment.motivo || "Sin motivo registrado";
 
     const tagsContainer = node.querySelector(".tags");
@@ -315,7 +436,7 @@ function renderAppointmentsList() {
 
     filtered
         .slice()
-        .sort((a, b) => new Date(a.fecha) - new Date(b.fecha))
+        .sort(compareAppointmentsByDate)
         .forEach((appointment) => appointmentsList.appendChild(createAppointmentCard(appointment)));
 }
 
@@ -326,7 +447,7 @@ async function fetchAppointments() {
             throw new Error("No se pudieron cargar las citas");
         }
         const data = await response.json();
-        state.appointments = data.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+        state.appointments = data.sort(compareAppointmentsByDate);
 
         if (!state.selectedDate) {
             const referenceDate = state.currentDate || new Date();
@@ -338,7 +459,7 @@ async function fetchAppointments() {
         renderAppointmentsList();
     } catch (error) {
         console.error(error);
-        showAlert("No se pudieron cargar las citas. Intenta nuevamente.");
+        showAlert("No se pudieron cargar las citas. Intenta nuevamente.", "error");
     }
 }
 
@@ -362,10 +483,10 @@ async function updateAppointmentStatus(appointment, status) {
         }
 
         await fetchAppointments();
-        showAlert(`La cita se marcó como ${status.toLowerCase()}.`);
+        showAlert(`La cita se marcó como ${status.toLowerCase()}.`, "success");
     } catch (error) {
         console.error(error);
-        showAlert(error.message);
+        showAlert(error.message, "error");
     }
 }
 
@@ -385,10 +506,10 @@ async function deleteAppointment(appointment) {
         }
 
         await fetchAppointments();
-        showAlert("La cita se eliminó correctamente.");
+        showAlert("La cita se eliminó correctamente.", "success");
     } catch (error) {
         console.error(error);
-        showAlert(error.message);
+        showAlert(error.message, "error");
     }
 }
 
@@ -403,49 +524,49 @@ async function handleFormSubmit(event) {
     const motivo = notesInput.value.trim();
 
     if (!paciente || paciente.length < 3) {
-        showAlert("Ingresa el nombre del paciente (mínimo 3 caracteres).");
+        showAlert("Ingresa el nombre del paciente (mínimo 3 caracteres).", "warning");
         patientInput.focus();
         return;
     }
 
     if (!medico || medico.length < 3) {
-        showAlert("Ingresa el nombre del doctor (mínimo 3 caracteres).");
+        showAlert("Ingresa el nombre del doctor (mínimo 3 caracteres).", "warning");
         doctorInput.focus();
         return;
     }
 
     if (!especialidad) {
-        showAlert("Selecciona una especialidad médica para la cita.");
+        showAlert("Selecciona una especialidad médica para la cita.", "warning");
         specialtySelect.focus();
         return;
     }
 
     if (!fecha) {
-        showAlert("Selecciona la fecha de la cita.");
+        showAlert("Selecciona la fecha de la cita.", "warning");
         dateInput.focus();
         return;
     }
 
     if (!hora) {
-        showAlert("Selecciona la hora de la cita.");
+        showAlert("Selecciona la hora de la cita.", "warning");
         timeInput.focus();
         return;
     }
 
     if (!isFutureDateTime(fecha, hora)) {
-        showAlert("La fecha y hora deben ser posteriores al momento actual.");
+        showAlert("La fecha y hora deben ser posteriores al momento actual.", "warning");
         return;
     }
 
     const holidayInfo = getHolidayInfo(`${fecha}T00:00:00`);
     if (holidayInfo) {
-        showAlert(`No se pueden registrar citas en ${holidayInfo.name}. Elige otro día.`);
+        showAlert(`No se pueden registrar citas en ${holidayInfo.name}. Elige otro día.`, "warning");
         dateInput.focus();
         return;
     }
 
     if (!motivo || motivo.length < 5) {
-        showAlert("Describe el motivo de la consulta (mínimo 5 caracteres).");
+        showAlert("Describe el motivo de la consulta (mínimo 5 caracteres).", "warning");
         notesInput.focus();
         return;
     }
@@ -477,14 +598,14 @@ async function handleFormSubmit(event) {
         }
 
         appointmentForm.reset();
-        state.selectedDate = payload.fecha.split("T")[0];
+        state.selectedDate = getAppointmentDateKey(payload.fecha) || payload.fecha.split("T")[0];
         await fetchAppointments();
         renderCalendar();
         renderSelectedAppointments();
-        showAlert("La cita se registró correctamente.");
+        showAlert("La cita se registró correctamente.", "success");
     } catch (error) {
         console.error(error);
-        showAlert(error.message);
+        showAlert(error.message, "error");
     } finally {
         submitButton.disabled = false;
         submitButton.textContent = "Agendar Cita";
@@ -498,24 +619,30 @@ async function refreshCurrentTime(updateCalendar = false) {
             throw new Error("No disponible");
         }
         const data = await response.json();
-        timezoneDatetime.textContent = `${data.date} · ${data.time}`;
-        timezoneDescription.textContent = `Zona horaria: ${data.timezone}`;
-        currentDateBanner.textContent = formatDisplayDate(data.datetime);
+        const timezone = data.timezone || state.timezone;
+        const dateKey = data.date;
 
-        const remoteDate = new Date(data.datetime);
-        if (!Number.isNaN(remoteDate.getTime())) {
-            state.currentDate = remoteDate;
-            if (updateCalendar) {
-                state.selectedDate = formatDate(remoteDate);
-                renderCalendar();
-                renderSelectedAppointments();
-            } else if (!state.selectedDate) {
-                state.selectedDate = formatDate(remoteDate);
+        timezoneDatetime.textContent = dateKey && data.time ? `${dateKey} · ${data.time}` : "--";
+        timezoneDescription.textContent = `Zona horaria: ${timezone}`;
+        currentDateBanner.textContent = formatDisplayDate(data.datetime, timezone);
+
+        if (dateKey) {
+            const remoteDate = parseDateKey(dateKey);
+            if (!Number.isNaN(remoteDate.getTime())) {
+                state.currentDate = remoteDate;
+                if (updateCalendar) {
+                    state.selectedDate = dateKey;
+                    renderCalendar();
+                    renderSelectedAppointments();
+                } else if (!state.selectedDate) {
+                    state.selectedDate = dateKey;
+                }
             }
         }
     } catch (error) {
         timezoneDatetime.textContent = "No disponible";
         timezoneDescription.textContent = "No se pudo obtener la hora actual";
+        currentDateBanner.textContent = "--";
     }
 }
 
@@ -550,7 +677,10 @@ function setupEventListeners() {
     timezoneSelect.addEventListener("change", async (event) => {
         state.timezone = event.target.value;
         await refreshCurrentTime(true);
-        showAlert(`Zona horaria actualizada a ${event.target.options[event.target.selectedIndex].textContent}.`);
+        showAlert(
+            `Zona horaria actualizada a ${event.target.options[event.target.selectedIndex].textContent}.`,
+            "info",
+        );
     });
     statusFilter.addEventListener("change", renderAppointmentsList);
 }
