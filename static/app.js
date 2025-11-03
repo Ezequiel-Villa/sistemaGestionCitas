@@ -7,6 +7,10 @@ const state = {
     timezone: "America/Mexico_City",
 };
 
+const MAX_PATIENT_NAME_LENGTH = 60;
+const MAX_DOCTOR_NAME_LENGTH = 60;
+const MAX_NOTES_LENGTH = 300;
+
 const calendarMonth = document.getElementById("calendar-month");
 const calendarSubtitle = document.getElementById("calendar-subtitle");
 const calendarGrid = document.getElementById("calendar-grid");
@@ -254,7 +258,22 @@ function renderCalendar() {
     });
 
     const appointmentsByDate = groupAppointmentsByDate();
-    calendarSubtitle.textContent = `${state.appointments.length} citas programadas en ${calendarMonth.textContent}`;
+    const totalMonthAppointments = state.appointments.reduce((total, appointment) => {
+        const parts = parseISODateParts(appointment.fecha);
+        if (!parts) {
+            return total;
+        }
+        if (parts.year === year && parts.month === month + 1) {
+            return total + 1;
+        }
+        return total;
+    }, 0);
+
+    const monthSubtitlePrefix =
+        totalMonthAppointments === 1
+            ? "1 cita programada"
+            : `${totalMonthAppointments} citas programadas`;
+    calendarSubtitle.textContent = `${monthSubtitlePrefix} en ${calendarMonth.textContent}`;
 
     calendarGrid.innerHTML = "";
 
@@ -529,8 +548,26 @@ async function handleFormSubmit(event) {
         return;
     }
 
+    if (paciente.length > MAX_PATIENT_NAME_LENGTH) {
+        showAlert(
+            `El nombre del paciente no debe exceder ${MAX_PATIENT_NAME_LENGTH} caracteres.`,
+            "warning",
+        );
+        patientInput.focus();
+        return;
+    }
+
     if (!medico || medico.length < 3) {
         showAlert("Ingresa el nombre del doctor (mínimo 3 caracteres).", "warning");
+        doctorInput.focus();
+        return;
+    }
+
+    if (medico.length > MAX_DOCTOR_NAME_LENGTH) {
+        showAlert(
+            `El nombre del doctor no debe exceder ${MAX_DOCTOR_NAME_LENGTH} caracteres.`,
+            "warning",
+        );
         doctorInput.focus();
         return;
     }
@@ -567,6 +604,15 @@ async function handleFormSubmit(event) {
 
     if (!motivo || motivo.length < 5) {
         showAlert("Describe el motivo de la consulta (mínimo 5 caracteres).", "warning");
+        notesInput.focus();
+        return;
+    }
+
+    if (motivo.length > MAX_NOTES_LENGTH) {
+        showAlert(
+            `La descripción de la consulta no debe exceder ${MAX_NOTES_LENGTH} caracteres.`,
+            "warning",
+        );
         notesInput.focus();
         return;
     }
