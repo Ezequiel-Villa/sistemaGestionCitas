@@ -76,10 +76,22 @@
                 <h2>Nueva Cita</h2>
                 <form id="appointment-form" autocomplete="off">
                     <label for="patient-name">Nombre del Paciente</label>
-                    <input type="text" id="patient-name" placeholder="Ej. María González" required />
+                    <input
+                        type="text"
+                        id="patient-name"
+                        placeholder="Ej. María González"
+                        required
+                        maxlength="60"
+                    />
 
                     <label for="doctor-name">Nombre del Doctor</label>
-                    <input type="text" id="doctor-name" placeholder="Ej. Dr. Juan Pérez" required />
+                    <input
+                        type="text"
+                        id="doctor-name"
+                        placeholder="Ej. Dr. Juan Pérez"
+                        required
+                        maxlength="60"
+                    />
 
                     <label for="specialty">Especialidad</label>
                     <select id="specialty" required>
@@ -104,6 +116,7 @@
                         placeholder="Describe el motivo de la consulta..."
                         required
                         minlength="5"
+                        maxlength="300"
                     ></textarea>
 
                     <button type="submit" class="primary">Agendar Cita</button>
