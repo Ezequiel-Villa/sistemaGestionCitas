@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MediCitas | Sistema de Gestión de Citas Médicas</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+</head>
+
+<body>
+    <header class="app-header">
+        <div class="brand">
+            <span class="logo">M</span>
+            <div class="brand-text">
+                <h1>MediCitas</h1>
+                <p>Sistema de Gestión de Citas Médicas</p>
+            </div>
+        </div>
+        <div class="current-date" id="current-date">--</div>
+    </header>
+
+    <main class="layout">
+        <section class="main-panel">
+            <div class="panel-header">
+                <div class="tabs">
+                    <button class="tab-button active" data-view="calendar">Vista Calendario</button>
+                    <button class="tab-button" data-view="list">Lista de Citas</button>
+                </div>
+                <div class="timezone-selector">
+                    <label for="timezone">Zona horaria</label>
+                    <select id="timezone">
+                        <option value="America/Mexico_City">CDMX</option>
+                        <option value="America/Tijuana">Tijuana</option>
+                        <option value="America/Bogota">Bogotá</option>
+                        <option value="America/Santiago">Santiago</option>
+                        <option value="Europe/Madrid">Madrid</option>
+                    </select>
+                </div>
+            </div>
+
+            <section id="calendar-view" class="panel-body">
+                <div class="calendar-header">
+                    <button id="prev-month" aria-label="Mes anterior">◀</button>
+                    <div>
+                        <h2 id="calendar-month">Noviembre 2025</h2>
+                        <p id="calendar-subtitle">Citas programadas para el mes</p>
+                    </div>
+                    <button id="next-month" aria-label="Mes siguiente">▶</button>
+                </div>
+                <div class="calendar-grid" id="calendar-grid"></div>
+                <div class="calendar-footer">
+                    <h3 id="selected-date-title">Citas para el día seleccionado</h3>
+                    <p id="selected-date-detail">Selecciona un día para ver las citas programadas</p>
+                    <div id="selected-date-appointments" class="selected-appointments"></div>
+                </div>
+            </section>
+
+            <section id="list-view" class="panel-body hidden">
+                <div class="list-controls">
+                    <label for="status-filter">Estado:</label>
+                    <select id="status-filter">
+                        <option value="todos">Todos</option>
+                        <option value="Pendiente">Pendiente</option>
+                        <option value="Completada">Completada</option>
+                        <option value="Cancelada">Cancelada</option>
+                    </select>
+                </div>
+                <div id="appointments-list" class="appointments-list"></div>
+            </section>
+        </section>
+
+        <aside class="sidebar">
+            <section class="card">
+                <h2>Nueva Cita</h2>
+                <form id="appointment-form" autocomplete="off">
+                    <label for="patient-name">Nombre del Paciente</label>
+                    <input type="text" id="patient-name" placeholder="Ej. María González" required />
+
+                    <label for="doctor-name">Nombre del Doctor</label>
+                    <input type="text" id="doctor-name" placeholder="Ej. Dr. Juan Pérez" required />
+
+                    <label for="specialty">Especialidad</label>
+                    <select id="specialty" required>
+                        <option value="">Seleccionar especialidad</option>
+                        <option value="Cardiología">Cardiología</option>
+                        <option value="Dermatología">Dermatología</option>
+                        <option value="Medicina General">Medicina General</option>
+                        <option value="Nutrición">Nutrición</option>
+                        <option value="Pediatría">Pediatría</option>
+                    </select>
+
+                    <label for="appointment-date">Fecha</label>
+                    <input type="date" id="appointment-date" required />
+
+                    <label for="appointment-time">Hora</label>
+                    <input type="time" id="appointment-time" required />
+
+                    <label for="appointment-notes">Motivo de la Consulta</label>
+                    <textarea
+                        id="appointment-notes"
+                        rows="3"
+                        placeholder="Describe el motivo de la consulta..."
+                        required
+                        minlength="5"
+                    ></textarea>
+
+                    <button type="submit" class="primary">Agendar Cita</button>
+                </form>
+            </section>
+
+            <section class="card secondary" id="timezone-info">
+                <h2>Hora actual</h2>
+                <p id="timezone-datetime">--</p>
+                <p class="timezone-detail" id="timezone-description"></p>
+            </section>
+        </aside>
+    </main>
+
+    <template id="appointment-card-template">
+        <article class="appointment-card">
+            <header>
+                <h3 class="patient"></h3>
+                <span class="status"></span>
+            </header>
+            <p class="doctor"></p>
+            <p class="date"></p>
+            <p class="notes"></p>
+            <footer>
+                <div class="tags"></div>
+                <div class="actions">
+                    <button class="secondary complete">Completar</button>
+                    <button class="secondary cancel">Cancelar</button>
+                    <button class="danger delete">Eliminar</button>
+                </div>
+            </footer>
+        </article>
+    </template>
+
+    <script src="/static/app.js" type="module"></script>
+</body>
+
+</html>
